@@ -1,49 +1,57 @@
-If (-not (Test-Path $env:LOCALAPPDATA\"Microsoft\Teams\current\Teams.exe"))
+# Beenden von Outlook und Teams
+Stop-process -Name Outlook
+Stop-process -Name Teams
 
-{  
-        Write-Host "Installing Teams ..." -ForegroundColor Green
-        C:\BackGround\Teams_windows_x64.exe --s
-        sleep 15
-        & cmd.exe /c "%LocalAppData%\Microsoft\Teams\Update.exe --processStart Teams.exe"
+
+#Loeschen der Teams-Dateien aus AppData (Roaming + Local)
+Remove-Item -Recurse "$env:APPDATA\Microsoft Teams"
+Remove-Item -Recurse "$env:APPDATA\Microsoft\Teams"
+Remove-Item -Recurse "$env:LOCALAPPDATA\Microsoft\Teams"
+Remove-Item -Recurse "$env:LOCALAPPDATA\Microsoft\TeamsMeetingAddin"
+Remove-Item -Recurse "$env:LOCALAPPDATA\Microsoft\TeamsPresenceAddin"
+
+
+#Download der aktuellsten Teams-Version
+function Get-RedirectedUri {
+    [CmdletBinding()]
+    param (
+        [Parameter(Mandatory = $true)]
+        [string]$Uri
+    )
+    process {
+        do {
+            try {
+                $request = Invoke-WebRequest -Method Head -Uri $Uri
+                if ($request.BaseResponse.ResponseUri -ne $null) {
+                    # This is for Powershell 5
+                    $redirectUri = $request.BaseResponse.ResponseUri.AbsoluteUri
+                }
+                elseif ($request.BaseResponse.RequestMessage.RequestUri -ne $null) {
+                    # This is for Powershell core
+                    $redirectUri = $request.BaseResponse.RequestMessage.RequestUri.AbsoluteUri
+                }
+ 
+                $retry = $false
+            }
+            catch {
+                if (($_.Exception.GetType() -match "HttpResponseException") -and ($_.Exception -match "302")) {
+                    $Uri = $_.Exception.Response.Headers.Location.AbsoluteUri
+                    $retry = $true
+                }
+                else {
+                    throw $_
+                }
+            }
+        } while ($retry)
+         $redirectUri
+    }
 }
-     
-else
-{
-        $Shell = New-Object -ComObject "WScript.Shell"
-        $Button = $Shell.Popup("OUTLOOK and TEAMS will be closed if still open - please close them now and then press OK", 0, "IMPORTANT INFORMATION - Reinstall Teams", 0)
+$latestTeamsURL = Get-RedirectedUri("https://go.microsoft.com/fwlink/p/?LinkID=869426&culture=de-at&country=AT&lm=deeplink&lmsrc=groupChatMarketingPageWeb&cmpid=directDownloadWin64")
+$outpath = "$env:APPDATA\Teams_Installer.exe"
+$ProgressPreference = 'SilentlyContinue'
+Invoke-WebRequest -UseBasicParsing -Uri $latestTeamsURL -OutFile $outpath
 
-        Write-Host "existing Teams installaion found" -ForegroundColor Green    
-        
-        Write-Host "Stopping Teams" -ForegroundColor Yellow
-            pskill -accepteula Teams.exe
-            Start-Sleep -Seconds 2
-        Write-Host "Teams sucessfully stopped" -ForegroundColor Green
-        
-        Write-Host "Stopping Outlook" -ForegroundColor Yellow
-            pskill -accepteula Outlook.exe
-            Start-Sleep -Seconds 2
-        Write-Host "Outlook sucessfully stopped" -ForegroundColor Green
-                
-        Write-Host "Clearing Teams disk cache" -ForegroundColor Yellow
-            Get-ChildItem -Path $env:APPDATA\"Microsoft\teams\application cache\cache" -Recurse | Remove-Item -Recurse -Confirm:$false
-            Get-ChildItem -Path $env:APPDATA\"Microsoft\teams\blob_storage" -Recurse | Remove-Item -Recurse -Confirm:$false
-            Get-ChildItem -Path $env:APPDATA\"Microsoft\teams\databases" -Recurse | Remove-Item -Recurse -Confirm:$false
-            Get-ChildItem -Path $env:APPDATA\"Microsoft\teams\cache" -Recurse | Remove-Item -Recurse -Confirm:$false
-            Get-ChildItem -Path $env:APPDATA\"Microsoft\teams\gpucache" -Recurse | Remove-Item -Recurse -Confirm:$false
-            Get-ChildItem -Path $env:APPDATA\"Microsoft\teams\Indexeddb" -Recurse | Remove-Item -Recurse -Confirm:$false
-            Get-ChildItem -Path $env:APPDATA\"Microsoft\teams\Local Storage" -Recurse| Remove-Item -Recurse -Confirm:$false
-            Get-ChildItem -Path $env:APPDATA\"Microsoft\teams\tmp" -Recurse | Remove-Item -Recurse -Confirm:$false
-        Write-Host "Teams disk cache cleaned" -ForegroundColor Green 
-
-        Write-Host "Cleaning Teams installation directory" -ForegroundColor Yellow
-            Get-ChildItem -Path $env:LOCALAPPDATA\"Microsoft\Teams\" | Remove-Item -Recurse -Confirm:$false
-            Get-ChildItem -Path $env:LOCALAPPDATA\"Microsoft\TeamsMeetingAddin\" | Remove-Item -Recurse -Confirm:$false
-            Get-ChildItem -Path $env:LOCALAPPDATA\"Microsoft\TeamsPresenceAddin\" | Remove-Item -Recurse -Confirm:$false
-        Write-Host "Teams installation directory cleaned" -ForegroundColor Green
-    
-        Write-Host "Installing Teams ..." -ForegroundColor Green
-        C:\BackGround\Teams_windows_x64.exe --s
-        sleep 15
-        & cmd.exe /c "%LocalAppData%\Microsoft\Teams\Update.exe --processStart Teams.exe"
-}
-
+#Installation Teams und Start Outlook 2016/2019
+& $outpath
+& "C:\Program Files\Microsoft Office\root\Office16\OUTLOOK.EXE"
+& "C:\Program Files (x86)\Microsoft Office\root\Office16\OUTLOOK.EXE"
